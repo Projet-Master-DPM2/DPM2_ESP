@@ -1,4 +1,4 @@
-#include "wifi_service.h"
+#include "services/wifi_service.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Preferences.h>
@@ -121,7 +121,7 @@ void WifiService_DebugStatus() {
                 (int)st,
                 st == WL_CONNECTED ? "CONNECTED" : "NOT_CONNECTED",
                 WiFi.localIP().toString().c_str(),
-                WiFi.softAPgetStationNum() >= 0 ? "ON" : "OFF");
+                WiFi.softAPgetStationNum() > 0 ? "ON" : "OFF");
 }
 
 

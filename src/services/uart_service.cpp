@@ -1,9 +1,10 @@
-#include "uart_service.h"
+#include "services/uart_service.h"
 #include "config.h"
 #include "orchestrator.h"
 // Utiliser un port UART dédié (Serial1) pour la liaison NUCLEO afin de laisser Serial2 au scanner QR
 #include <HardwareSerial.h>
-#include "wifi_service.h"
+#include "services/wifi_service.h"
+#include "uart_parser.h"
 
 static TaskHandle_t uartTaskHandle = nullptr;
 static QueueHandle_t orchestratorQueueHandle = nullptr;
@@ -52,24 +53,26 @@ static void publishEvent(OrchestratorEventType type, const char* payload) {
 }
 
 static void handleIncomingLine(const String& line) {
-  // Protocole minimal: lignes texte, ex: STATE:PAYING
-  if (line.startsWith("STATE:")) {
-    String state = line.substring(6);
-    state.trim();
-    if (state == "PAYING") {
-      if (WifiService_IsReady()) {
-        publishEvent(ORCH_EVT_STATE_PAYING, nullptr);
-        UartService_SendLine("ACK:STATE:PAYING");
-      } else {
-        UartService_SendLine("NAK:STATE:PAYING:NO_NET");
-      }
-      return;
-    }
+  UartResult r = UartParser_HandleLine(line.c_str(), WifiService_IsReady());
+  switch (r) {
+    case UART_ACK:
+      publishEvent(ORCH_EVT_STATE_PAYING, nullptr);
+      UartService_SendLine("ACK:STATE:PAYING");
+      break;
+    case UART_NAK:
+      UartService_SendLine("NAK:STATE:PAYING:NO_NET");
+      break;
+    case UART_ERR_TOO_LONG:
+      UartService_SendLine("ERR:LINE_TOO_LONG");
+      break;
+    case UART_ERR_BAD_CHAR:
+      UartService_SendLine("ERR:BAD_CHAR");
+      break;
+    case UART_UNKNOWN:
+    default:
+      UartService_SendLine("ERR:UNKNOWN_CMD");
+      break;
   }
-  // plus tard: gestion d'autres NAK/ACK émis côté ESP (ex backend)
-
-  // Ligne non reconnue
-  UartService_SendLine("ERR:UNKNOWN_CMD");
 }
 
 static void uartTask(void* pvParameters) {
