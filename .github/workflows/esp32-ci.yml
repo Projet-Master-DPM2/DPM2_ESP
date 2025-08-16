@@ -1,0 +1,301 @@
+permissions:
+  contents: write
+
+name: ESP32 CI (tests natifs, build, artefacts, release, email)
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+    tags: [ "v*.*.*" ]
+  pull_request:
+
+env:
+  ENABLE_S3_UPLOAD: "false"
+  ARTEFACT_NAME: esp-firmware
+
+jobs:
+  native-tests:
+    runs-on: ubuntu-latest
+    env:
+      CI_WERROR: -Werror
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python & PlatformIO
+        run: |
+          python3 -V
+          pip install -U platformio
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('**/platformio.ini') }}
+
+      # --- TESTS → JUnit uniquement ---
+      - name: Run tests (JUnit only)
+        run: |
+           mkdir -p reports
+           pio test -e native --without-uploading \
+             --junit-output-path reports/tests.xml
+           
+           # Vérifier que le fichier JUnit a été créé
+           if [[ -f reports/tests.xml ]]; then
+             echo "✅ JUnit XML créé: $(wc -l < reports/tests.xml) lignes"
+             head -5 reports/tests.xml
+           else
+             echo "❌ Erreur: reports/tests.xml n'a pas été créé"
+             ls -la reports/ || echo "Le dossier reports/ n'existe pas"
+             exit 1
+           fi
+
+      # --- Parse JUnit → Markdown (durée min 0.001s) ---
+      - name: Build Markdown summary from JUnit
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET, os
+
+          xml_path = 'reports/tests.xml'
+          if not os.path.exists(xml_path):
+              print(f"Erreur: {xml_path} n'existe pas")
+              print("Fichiers dans reports/:")
+              if os.path.exists('reports'):
+                  print(os.listdir('reports'))
+              else:
+                  print("Le dossier reports/ n'existe pas")
+              exit(1)
+          
+          tree = ET.parse(xml_path)
+          root = tree.getroot()
+
+          # JUnit peut avoir <testsuites> ou un seul <testsuite>
+          if root.tag == 'testsuite':
+              suites = [root]
+          else:
+              suites = list(root.findall('testsuite'))
+
+          rows = []
+          total = passed = failed = skipped = 0
+
+          def status_of(case):
+              if case.find('failure') is not None or case.find('error') is not None:
+                  return 'FAIL'
+              if case.find('skipped') is not None:
+                  return 'SKIP'
+              return 'PASS'
+
+          for suite in suites:
+              env_name = (suite.get('name') or 'native').replace(':', '/')
+              for case in suite.findall('testcase'):
+                  name  = case.get('name') or ''
+                  st    = status_of(case)
+                  try:
+                      dur_s = float(case.get('time') or 0.0)
+                  except:
+                      dur_s = 0.0
+                  dur_s = max(dur_s, 0.001)  # min 0.001s
+
+                  total += 1
+                  if st == 'PASS':
+                      passed += 1; badge = '✅ PASS'
+                  elif st == 'SKIP':
+                      skipped += 1; badge = '⚠️ SKIP'
+                  else:
+                      failed += 1; badge = '❌ FAIL'
+
+                  full_name = f"{env_name}/{name}" if name else env_name
+                  rows.append((full_name, badge, f"{dur_s:.3f}s"))
+
+          # (Markdown sera écrit dans le fichier à la fin)
+
+          # (Plus de génération CSV)
+          
+          # Écrire le Markdown dans un fichier séparé
+          with open('reports/tests.md', 'w', encoding='utf-8') as f:
+              f.write("### Tests unitaires (native)\n")
+              f.write(f"**Résumé** : {passed} pass · {failed} fail · {skipped} skip · total {total}\n\n")
+              f.write("| Test | Statut | Durée |\n")
+              f.write("|---|:---:|---:|\n")
+              for n,s,t in rows:
+                  f.write(f"| `{n}` | {s} | {t} |\n")
+          
+          print(f"Markdown créé avec succès: {os.path.getsize('reports/tests.md')} bytes")
+          PY
+
+      - name: Publish job summary
+        run: |
+          cat reports/tests.md >> $GITHUB_STEP_SUMMARY
+
+
+
+  cppcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cppcheck + deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cppcheck python3 python3-lxml
+
+      - name: Run cppcheck (HTML if available)
+        run: |
+           mkdir -p reports/cppcheck_html
+           # Générer XML temporaire pour le HTML
+           cppcheck --std=c11 --enable=all --inline-suppr \
+                    --suppress=missingIncludeSystem \
+                    -I include -I src \
+                    --xml --xml-version=2 . 2> /tmp/cppcheck.xml || true
+           if command -v cppcheck-htmlreport >/dev/null; then
+             cppcheck-htmlreport --file=/tmp/cppcheck.xml \
+                                 --report-dir=reports/cppcheck_html \
+                                 --source-dir=. || true
+           fi
+           # Supprimer le XML temporaire
+           rm -f /tmp/cppcheck.xml
+           echo "### Cppcheck (advisory)" >> $GITHUB_STEP_SUMMARY
+           echo "Rapport HTML: artefact **cppcheck-html** (si généré)." >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload cppcheck HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: cppcheck-html
+          path: reports/cppcheck_html/**
+          if-no-files-found: ignore
+
+
+
+  build-esp32:
+    runs-on: ubuntu-latest
+    needs: [native-tests, cppcheck]
+    env:
+      CI_WERROR: -Werror
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python & PlatformIO
+        run: |
+          python3 -V
+          pip install -U platformio
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('**/platformio.ini') }}
+
+      - name: Build firmware (esp32dev) (with -Werror)
+        run: pio run -e esp32dev
+
+      - name: Package firmware (bin + elf + map + README)
+        run: |
+          mkdir -p out
+          cp -v .pio/build/esp32dev/*.bin out/ || true
+          cp -v .pio/build/esp32dev/*.elf out/ || true
+          cp -v .pio/build/esp32dev/*.map out/ || true
+          cat > out/README.txt <<'TXT'
+          ========== ESP32 Firmware Package ==========
+          Contenu :
+            - firmware.bin : image à flasher
+            - firmware.elf : binaire avec symboles (debug, addr2line)
+            - firmware.map : carte mémoire (diagnostic)
+
+          Flash avec PlatformIO :
+            pio run -e esp32dev -t upload --upload-port <PORT>
+
+          Flash manuel (esptool, Arduino core offsets) :
+            esptool.py --chip esp32 --port <PORT> --baud 921600 write_flash -z 0x10000 firmware.bin
+
+          Débugger un backtrace (addr2line) :
+            xtensa-esp32-elf-addr2line -pfiaC -e firmware.elf 0x400d1abc 0x4008fe12 ...
+          ============================================
+          TXT
+          ZIP="${{ env.ARTEFACT_NAME }}-${{ github.ref_name || github.sha }}.zip"
+          (cd out && zip -r "../$ZIP" .)
+          echo "ZIP_FILE=$ZIP" >> $GITHUB_ENV
+
+      - name: Upload firmware ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_FILE }}
+          path: ${{ env.ZIP_FILE }}
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build-esp32
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Find ZIP
+        id: findzip
+        run: |
+          ZIP="$(find artifacts -name '*.zip' | head -n1 | xargs basename)"
+          echo "zip=$ZIP" >> $GITHUB_OUTPUT
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: "ESP Firmware ${{ github.ref_name }}"
+          body: |
+            Artefacts firmware (ESP32) générés automatiquement.
+            - Commit: ${{ github.sha }}
+            - Branch/Tag: ${{ github.ref_name }}
+            - Tests: natifs exécutés (cf. Summary du run)
+            - Build: Firmware ESP32 compilé avec -Werror
+          files: artifacts/**/${{ steps.findzip.outputs.zip }}
+
+  email:
+    runs-on: ubuntu-latest
+    needs: [build-esp32]
+    if: always()
+    steps:
+      - name: Compose email body (simple text)
+        id: body
+        run: |
+          if [[ "${{ needs.build-esp32.result }}" == "success" ]]; then
+            STATUS="✅ SUCCESS"; ICON="✅"
+          else
+            STATUS="❌ FAILED"; ICON="❌"
+          fi
+          BRANCH_OR_TAG="${GITHUB_REF##*/}"
+          COMMIT="${GITHUB_SHA:0:8}"
+          ACTIONS_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          # Corps de l'email simple
+          {
+            echo "body<<EMAIL_BODY_EOF"
+            echo "$ICON Build ESP32 DPM2: $STATUS"
+            echo "🔀 Ref: ${BRANCH_OR_TAG}"
+            echo "🔖 Commit: ${COMMIT}"
+            echo ""
+            echo "🧪 Tests: Voir le Summary GitHub Actions pour les détails des tests unitaires"
+            echo ""
+            if [[ "${GITHUB_REF}" == refs/tags/* ]] && [[ "${{ needs.build-esp32.result }}" == "success" ]]; then
+              echo "📦 Release: https://github.com/${{ github.repository }}/releases/tag/${BRANCH_OR_TAG}"
+            else
+              echo "📋 Details: ${ACTIONS_URL}"
+            fi
+            echo ""
+            echo "📑 Cppcheck: artefact 'cppcheck-html' (si généré)"
+            echo "📦 Firmware ZIP: artefact '${{ env.ARTEFACT_NAME }}-${BRANCH_OR_TAG}.zip' (ou SHA)"
+            echo "EMAIL_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Send email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_HOST }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          from: ${{ secrets.MAIL_FROM }}
+          to: ${{ secrets.MAIL_TO }}
+          subject: "ESP32 DPM2 CI • ${{ needs.build-esp32.result == 'success' && 'OK' || 'FAIL' }} • ${{ github.ref_name || github.sha }}"
+          secure: false   # 587 (STARTTLS). Si tu passes au 465, mets: true
+          body: ${{ steps.body.outputs.body }}
