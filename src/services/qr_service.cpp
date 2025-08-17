@@ -1,4 +1,4 @@
-#include "qr_service.h"
+#include "services/qr_service.h"
 #include "config.h"
 
 static TaskHandle_t qrTaskHandle = nullptr;

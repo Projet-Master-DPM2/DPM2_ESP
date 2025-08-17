@@ -1,0 +1,15 @@
+{
+    "name": "dpm_core",
+    "version": "1.0.0",
+    "description": "Core functions for DPM project unit testing",
+    "keywords": ["test", "embedded"],
+    "authors": {
+        "name": "DPM Project",
+        "maintainer": true
+    },
+    "license": "MIT",
+    "homepage": "",
+    "dependencies": {},
+    "frameworks": "*",
+    "platforms": "*"
+}
