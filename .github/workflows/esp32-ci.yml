@@ -242,12 +242,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.ref_name }}
           name: "ESP Firmware ${{ github.ref_name }}"
-          body: |
-            Artefacts firmware (ESP32) générés automatiquement.
-            - Commit: ${{ github.sha }}
-            - Branch/Tag: ${{ github.ref_name }}
-            - Tests: natifs exécutés (cf. Summary du run)
-            - Build: Firmware ESP32 compilé avec -Werror
+          body: ${{ github.event.head_commit.message }}
           files: artifacts/**/${{ steps.findzip.outputs.zip }}
 
   email:
