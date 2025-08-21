@@ -1,8 +1,8 @@
+#include <Arduino.h>
 #include "services/uart_service.h"
 #include "config.h"
 #include "orchestrator.h"
 #include "security_config.h"
-#include "../security_utils.cpp"
 // Utiliser un port UART dédié (Serial1) pour la liaison NUCLEO afin de laisser Serial2 au scanner QR
 #include <HardwareSerial.h>
 #include "services/wifi_service.h"

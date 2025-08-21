@@ -1,6 +1,6 @@
+#include <Arduino.h>
 #include "services/wifi_service.h"
 #include "security_config.h"
-#include "../security_utils.cpp"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Preferences.h>

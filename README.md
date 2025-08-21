@@ -306,4 +306,3 @@ Réalisé par l'équipe DPM - Distributeur Projet Master
 
 **Équipe DPM2** - Distributeur Automatique Intelligent  
 *ESP32 Communication Module - v1.0*
-

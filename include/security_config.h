@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Arduino.h>
+
 // Configuration de sécurité OWASP pour ESP32
 // Implémentation des recommandations de sécurité critiques
 
@@ -43,7 +45,9 @@ static const char* CA_CERT = \
 "-----END CERTIFICATE-----\n";
 
 // Configuration sécurité TLS
+#ifndef TLS_CERT_VALIDATION_ENABLED
 #define TLS_CERT_VALIDATION_ENABLED     true
+#endif
 #define TLS_HOSTNAME_VERIFICATION       true
 #define TLS_MIN_VERSION                 1.2f  // Minimum TLS 1.2
 #define HTTP_TIMEOUT_MS                 10000
@@ -56,7 +60,9 @@ static const char* CA_CERT = \
 // Clé de chiffrement pour NVS (doit être changée en production)
 #define NVS_ENCRYPTION_KEY_SIZE         32
 #define NVS_NAMESPACE_SECURE            "secure_dpm"
+#ifndef WIFI_CREDS_ENCRYPTION_ENABLED
 #define WIFI_CREDS_ENCRYPTION_ENABLED   true
+#endif
 
 // Salt pour le hachage des mots de passe
 static const char* PASSWORD_SALT = "DPM2_ESP32_SALT_2024";
@@ -81,7 +87,9 @@ typedef enum {
 #endif
 
 // Masquage des données sensibles
+#ifndef MASK_SENSITIVE_DATA
 #define MASK_SENSITIVE_DATA             true
+#endif
 #define UID_MASK_LENGTH                 4    // Afficher seulement 4 chars des UIDs
 #define WIFI_SSID_MASK_LENGTH          8    // Afficher seulement 8 chars des SSIDs
 
@@ -142,13 +150,23 @@ typedef enum {
 
 // Macro pour logging sécurisé avec masquage
 #define SECURE_LOG_INFO(tag, format, ...) do { if (getLogLevel() >= LOG_LEVEL_INFO) Serial.printf("[" tag "] " format "\n", ##__VA_ARGS__); } while(0)
+#define SECURE_LOG_WARN(tag, format, ...) do { if (getLogLevel() >= LOG_LEVEL_WARN) Serial.printf("[WARN][" tag "] " format "\n", ##__VA_ARGS__); } while(0)
 #define SECURE_LOG_ERROR(tag, format, ...) do { if (getLogLevel() >= LOG_LEVEL_ERROR) Serial.printf("[ERR][" tag "] " format "\n", ##__VA_ARGS__); } while(0)
 
 // Déclarations des fonctions utilitaires
 LogLevel getLogLevel();
 void setLogLevel(LogLevel level);
 String maskSensitiveData(const String& data, int visibleChars);
+String maskUID(const String& uid);
+String maskSSID(const String& ssid);
+String maskPassword(const String& password);
 bool isValidUrl(const char* url);
 bool isValidSSID(const char* ssid);
+bool isValidNFCData(const char* data);
 bool rateLimitCheck(const char* service, unsigned long cooldownMs);
+bool deriveKey(const char* password, const char* salt, uint8_t* key, size_t keyLen);
+bool encryptData(const char* plaintext, const uint8_t* key, char* ciphertext, size_t maxLen);
+bool decryptData(const char* ciphertext, const uint8_t* key, char* plaintext, size_t maxLen);
+void logSecurityEvent(const char* event, const char* details);
+void checkSystemSecurity();
 

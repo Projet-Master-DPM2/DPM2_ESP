@@ -1,7 +1,7 @@
+#include <Arduino.h>
 #include "services/nfc_service.h"
 #include "config.h"
 #include "security_config.h"
-#include "../security_utils.cpp"
 #include <SPI.h>
 #include <MFRC522.h>
 #include <string.h>

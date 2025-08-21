@@ -9,7 +9,7 @@
 
 static LogLevel currentLogLevel = DEFAULT_LOG_LEVEL;
 static unsigned long lastRateLimitCheck[10] = {0}; // Support 10 services différents
-static const char* rateLimitServices[] = {"NFC", "UART", "HTTP", "WIFI", "QR", "", "", "", "", ""};
+static char rateLimitServices[10][10] = {"NFC", "UART", "HTTP", "WIFI", "QR", "", "", "", "", ""};
 
 // =============================================================================
 // GESTION DU NIVEAU DE LOG
