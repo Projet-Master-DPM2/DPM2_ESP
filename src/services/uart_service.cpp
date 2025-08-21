@@ -1,6 +1,8 @@
+#include <Arduino.h>
 #include "services/uart_service.h"
 #include "config.h"
 #include "orchestrator.h"
+#include "security_config.h"
 // Utiliser un port UART dédié (Serial1) pour la liaison NUCLEO afin de laisser Serial2 au scanner QR
 #include <HardwareSerial.h>
 #include "services/wifi_service.h"
@@ -17,9 +19,9 @@ void StartTaskUartService(QueueHandle_t orchestratorQueue) {
 
   // Config pins si nécessaire (selon board) + begin
   SerialNucleo.begin(UART_BAUDRATE, SERIAL_8N1, UART_RX_PIN, UART_TX_PIN);
-  Serial.printf("[UART1] start @ %lu bps (RX=%d, TX=%d)\n", (unsigned long)UART_BAUDRATE, UART_RX_PIN, UART_TX_PIN);
+  SECURE_LOG_INFO("UART1", "Started @ %lu bps (RX=%d, TX=%d)", (unsigned long)UART_BAUDRATE, UART_RX_PIN, UART_TX_PIN);
 #if UART0_FALLBACK_ENABLED
-  Serial.printf("[UART0] USB monitor active @ 115200 (RX0/TX0). Si vous voyez [UART1<-], la liaison est OK.\n");
+  SECURE_LOG_INFO("UART0", "USB monitor active @ 115200 (RX0/TX0)");
 #endif
 
   if (!uartTaskHandle) {
@@ -53,24 +55,50 @@ static void publishEvent(OrchestratorEventType type, const char* payload) {
 }
 
 static void handleIncomingLine(const String& line) {
+  // Rate limiting UART
+  if (!rateLimitCheck("UART", UART_COMMAND_COOLDOWN_MS)) {
+    SECURE_LOG_ERROR("UART", "Command rate limited");
+    UartService_SendLine("ERR:RATE_LIMIT");
+    return;
+  }
+  
+  // Validation de la ligne
+  if (line.length() > MAX_UART_LINE_LENGTH) {
+    SECURE_LOG_ERROR("UART", "Line too long: %d chars", line.length());
+    UartService_SendLine("ERR:LINE_TOO_LONG");
+    return;
+  }
+  
+  // Log sécurisé (masquer données sensibles)
+  String maskedLine = line;
+  if (line.startsWith("STATE:PAYING") || line.startsWith("NFC_")) {
+    maskedLine = maskSensitiveData(line, 12);
+  }
+  SECURE_LOG_INFO("UART", "Processing: %s", maskedLine.c_str());
+  
   UartResult r = UartParser_HandleLine(line.c_str(), WifiService_IsReady());
   switch (r) {
     case UART_ACK:
       publishEvent(ORCH_EVT_STATE_PAYING, nullptr);
       UartService_SendLine("ACK:STATE:PAYING");
+      SECURE_LOG_INFO("UART", "ACK sent for payment state");
       break;
     case UART_NAK:
       UartService_SendLine("NAK:STATE:PAYING:NO_NET");
+      SECURE_LOG_INFO("UART", "NAK sent - no network");
       break;
     case UART_ERR_TOO_LONG:
       UartService_SendLine("ERR:LINE_TOO_LONG");
+      SECURE_LOG_ERROR("UART", "Line length error");
       break;
     case UART_ERR_BAD_CHAR:
       UartService_SendLine("ERR:BAD_CHAR");
+      SECURE_LOG_ERROR("UART", "Invalid character detected");
       break;
     case UART_UNKNOWN:
     default:
       UartService_SendLine("ERR:UNKNOWN_CMD");
+      SECURE_LOG_ERROR("UART", "Unknown command");
       break;
   }
 }
@@ -84,7 +112,9 @@ static void uartTask(void* pvParameters) {
       char c = (char)SerialNucleo.read();
       if (c == '\n' || c == '\r') {
         if (buffer.length() > 0) {
-          Serial.printf("[UART1<-] %s\n", buffer.c_str());
+          // Log sécurisé sans révéler les données sensibles
+          String maskedBuffer = maskSensitiveData(buffer, 10);
+          SECURE_LOG_INFO("UART1", "Received: %s", maskedBuffer.c_str());
           handleIncomingLine(buffer);
           buffer = "";
         }

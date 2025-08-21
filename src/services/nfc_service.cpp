@@ -1,5 +1,7 @@
+#include <Arduino.h>
 #include "services/nfc_service.h"
 #include "config.h"
+#include "security_config.h"
 #include <SPI.h>
 #include <MFRC522.h>
 #include <string.h>
@@ -71,9 +73,24 @@ TaskHandle_t NfcService_GetTaskHandle() {
 }
 
 bool NfcService_TriggerScan() {
-  if (nfcTaskHandle == nullptr) return false;
-  if (nfcBusy) return false;
-  Serial.println("[NFC] Trigger scan");
+  // Rate limiting pour éviter le spam NFC
+  if (!rateLimitCheck("NFC", NFC_SCAN_COOLDOWN_MS)) {
+    SECURE_LOG_ERROR("NFC", "Scan rate limited");
+    return false;
+  }
+  
+  if (nfcTaskHandle == nullptr) {
+    SECURE_LOG_ERROR("NFC", "Service not initialized");
+    return false;
+  }
+  
+  if (nfcBusy) {
+    SECURE_LOG_ERROR("NFC", "Scanner busy");
+    return false;
+  }
+  
+  SECURE_LOG_INFO("NFC", "Scan triggered");
+  logSecurityEvent("NFC_SCAN_TRIGGERED", "User initiated");
   xTaskNotifyGive(nfcTaskHandle);
   return true;
 }
@@ -274,6 +291,17 @@ static void nfcTask(void* pvParameters) {
         if (!isBounce) {
           lastUidHex = uidHex;
           lastReadMs = now;
+          
+          // Validation et masquage de l'UID
+          if (!isValidNFCData(uidHex.c_str())) {
+            SECURE_LOG_ERROR("NFC", "Invalid UID format detected");
+            continue;
+          }
+          
+          String maskedUID = maskUID(uidHex);
+          SECURE_LOG_INFO("NFC", "Valid card detected: %s", maskedUID.c_str());
+          logSecurityEvent("NFC_CARD_READ", ("UID: " + maskedUID).c_str());
+          
           sendEvent(ORCH_EVT_NFC_UID_READ, uidHex.c_str());
 
           // Essayer de lire un enregistrement texte NDEF

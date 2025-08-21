@@ -5,7 +5,7 @@ name: ESP32 CI (tests natifs, build, artefacts, release, email)
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches: [ "main", "dev", "CI/CD" ]
     tags: [ "v*.*.*" ]
   pull_request:
 
@@ -211,7 +211,9 @@ jobs:
             xtensa-esp32-elf-addr2line -pfiaC -e firmware.elf 0x400d1abc 0x4008fe12 ...
           ============================================
           TXT
-          ZIP="${{ env.ARTEFACT_NAME }}-${{ github.ref_name || github.sha }}.zip"
+          # Nettoyer le nom de ref pour éviter les caractères problématiques
+          REF_CLEAN=$(echo "${{ github.ref_name || github.sha }}" | sed 's/[^a-zA-Z0-9._-]/_/g')
+          ZIP="${{ env.ARTEFACT_NAME }}-${REF_CLEAN}.zip"
           (cd out && zip -r "../$ZIP" .)
           echo "ZIP_FILE=$ZIP" >> $GITHUB_ENV
 

@@ -1,4 +1,6 @@
+#include <Arduino.h>
 #include "services/wifi_service.h"
+#include "security_config.h"
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Preferences.h>
@@ -22,41 +24,160 @@ static void handleRoot() {
   server.send(200, "text/html", html);
 }
 
+// Sauvegarde sécurisée des credentials WiFi
+static bool saveWifiCredentials(const String& ssid, const String& password) {
+  // Validation des entrées
+  if (!isValidSSID(ssid.c_str())) {
+    SECURE_LOG_ERROR("WIFI", "Invalid SSID rejected");
+    return false;
+  }
+  
+  if (password.length() > MAX_PASSWORD_LENGTH) {
+    SECURE_LOG_ERROR("WIFI", "Password too long");
+    return false;
+  }
+  
+  // Générer la clé de chiffrement
+  uint8_t encKey[NVS_ENCRYPTION_KEY_SIZE];
+  if (!deriveKey(PASSWORD_SALT, ssid.c_str(), encKey, sizeof(encKey))) {
+    SECURE_LOG_ERROR("WIFI", "Failed to derive encryption key");
+    return false;
+  }
+  
+  // Chiffrer le mot de passe
+  char encryptedPassword[256];
+  if (WIFI_CREDS_ENCRYPTION_ENABLED && password.length() > 0) {
+    if (!encryptData(password.c_str(), encKey, encryptedPassword, sizeof(encryptedPassword))) {
+      SECURE_LOG_ERROR("WIFI", "Failed to encrypt password");
+      return false;
+    }
+  } else {
+    strncpy(encryptedPassword, password.c_str(), sizeof(encryptedPassword) - 1);
+    encryptedPassword[sizeof(encryptedPassword) - 1] = '\0';
+  }
+  
+  // Sauvegarder dans NVS sécurisé
+  prefs.begin(NVS_NAMESPACE_SECURE, false);
+  bool success = prefs.putString("ssid", ssid) && 
+                 prefs.putString("pass_enc", encryptedPassword) &&
+                 prefs.putBool("encrypted", WIFI_CREDS_ENCRYPTION_ENABLED);
+  prefs.end();
+  
+  if (success) {
+    SECURE_LOG_INFO("WIFI", "Credentials saved securely for SSID: %s", maskSSID(ssid).c_str());
+    logSecurityEvent("WIFI_CREDS_SAVED", ("SSID: " + maskSSID(ssid)).c_str());
+  } else {
+    SECURE_LOG_ERROR("WIFI", "Failed to save credentials");
+  }
+  
+  // Nettoyer la mémoire
+  SECURE_ZERO(encKey, sizeof(encKey));
+  SECURE_ZERO(encryptedPassword, sizeof(encryptedPassword));
+  
+  return success;
+}
+
+// Chargement sécurisé des credentials WiFi
+static bool loadWifiCredentials(String& ssid, String& password) {
+  prefs.begin(NVS_NAMESPACE_SECURE, true);
+  
+  ssid = prefs.getString("ssid", "");
+  String encryptedPassword = prefs.getString("pass_enc", "");
+  bool isEncrypted = prefs.getBool("encrypted", false);
+  
+  prefs.end();
+  
+  if (ssid.isEmpty()) {
+    return false;
+  }
+  
+  // Déchiffrer le mot de passe si nécessaire
+  if (isEncrypted && encryptedPassword.length() > 0) {
+    uint8_t encKey[NVS_ENCRYPTION_KEY_SIZE];
+    if (!deriveKey(PASSWORD_SALT, ssid.c_str(), encKey, sizeof(encKey))) {
+      SECURE_LOG_ERROR("WIFI", "Failed to derive decryption key");
+      return false;
+    }
+    
+    char decryptedPassword[128];
+    if (!decryptData(encryptedPassword.c_str(), encKey, decryptedPassword, sizeof(decryptedPassword))) {
+      SECURE_LOG_ERROR("WIFI", "Failed to decrypt password");
+      SECURE_ZERO(encKey, sizeof(encKey));
+      return false;
+    }
+    
+    password = String(decryptedPassword);
+    
+    // Nettoyer la mémoire
+    SECURE_ZERO(encKey, sizeof(encKey));
+    SECURE_ZERO(decryptedPassword, sizeof(decryptedPassword));
+  } else {
+    password = encryptedPassword;
+  }
+  
+  SECURE_LOG_INFO("WIFI", "Credentials loaded for SSID: %s", maskSSID(ssid).c_str());
+  return true;
+}
+
 static void handleSave() {
   String ssid = server.hasArg("ssid") ? server.arg("ssid") : "";
   String pass = server.hasArg("pass") ? server.arg("pass") : "";
+  
+  // Rate limiting pour éviter le spam
+  if (!rateLimitCheck("WIFI", 5000)) { // 5 secondes minimum entre tentatives
+    server.send(429, "text/plain", "Trop de tentatives, veuillez patienter");
+    return;
+  }
+  
   if (ssid.length() == 0) {
     server.send(400, "text/plain", "SSID manquant");
     return;
   }
+  
+  // Validation et sauvegarde sécurisée
+  if (!saveWifiCredentials(ssid, pass)) {
+    server.send(500, "text/plain", "Erreur lors de la sauvegarde");
+    return;
+  }
+  
   server.send(200, "text/plain", "Connexion en cours... Redemarrer la page.");
-  // Sauver et tenter connexion
-  prefs.begin("wifi", false);
-  prefs.putString("ssid", ssid);
-  prefs.putString("pass", pass);
-  prefs.end();
   credsUpdated = true;
 }
 
 static bool testConnectSaved(uint32_t timeoutMs) {
-  // Ouvrir RW pour créer l'espace au besoin et éviter le spam NOT_FOUND
-  prefs.begin("wifi", false);
-  String ssid = prefs.getString("ssid", "");
-  String pass = prefs.getString("pass", "");
-  prefs.end();
-  if (ssid.isEmpty()) return false;
+  String ssid, password;
+  
+  // Charger les credentials de manière sécurisée
+  if (!loadWifiCredentials(ssid, password)) {
+    SECURE_LOG_INFO("WIFI", "No saved credentials found");
+    return false;
+  }
+  
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid.c_str(), pass.c_str());
+  WiFi.begin(ssid.c_str(), password.c_str());
+  
   uint32_t start = millis();
-  Serial.printf("[WIFI] Connexion a '%s'...\n", ssid.c_str());
+  SECURE_LOG_INFO("WIFI", "Connecting to '%s'...", maskSSID(ssid).c_str());
+  
   while (millis() - start < timeoutMs) {
     if (WiFi.status() == WL_CONNECTED) {
-      Serial.printf("[WIFI] Connecte, IP=%s\n", WiFi.localIP().toString().c_str());
+      SECURE_LOG_INFO("WIFI", "Connected successfully, IP=%s", WiFi.localIP().toString().c_str());
+      logSecurityEvent("WIFI_CONNECTED", ("SSID: " + maskSSID(ssid)).c_str());
+      
+      // Nettoyer les credentials de la mémoire
+      SECURE_ZERO((void*)password.c_str(), password.length());
+      
       return true;
     }
     delay(200);
   }
-  Serial.println("[WIFI] Echec connexion");
+  
+  SECURE_LOG_ERROR("WIFI", "Connection failed to %s", maskSSID(ssid).c_str());
+  logSecurityEvent("WIFI_CONNECT_FAILED", ("SSID: " + maskSSID(ssid)).c_str());
+  
+  // Nettoyer les credentials de la mémoire
+  SECURE_ZERO((void*)password.c_str(), password.length());
+  
   return false;
 }
 
