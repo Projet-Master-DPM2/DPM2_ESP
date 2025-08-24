@@ -2,6 +2,7 @@
 #include "config.h"
 #include "orchestrator.h"
 #include "env_config.h"
+#include "supervision_service.h"
 #include "services/nfc_service.h"
 #include "services/uart_service.h"
 #include "services/qr_service.h"

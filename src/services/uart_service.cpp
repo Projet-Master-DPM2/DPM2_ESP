@@ -3,6 +3,7 @@
 #include "config.h"
 #include "orchestrator.h"
 #include "security_config.h"
+#include "supervision_service.h"
 // Utiliser un port UART dédié (Serial1) pour la liaison NUCLEO afin de laisser Serial2 au scanner QR
 #include <HardwareSerial.h>
 #include "services/wifi_service.h"
@@ -109,6 +110,20 @@ static void handleIncomingLine(const String& line) {
   
   if (line.startsWith("VEND_FAILED")) {
     SECURE_LOG_ERROR("UART", "Vending failed for item: %s", line.c_str());
+    return;
+  }
+  
+  // Traitement des messages de supervision
+  if (line.startsWith("SUPERVISION_ERROR:")) {
+    String jsonPayload = line.substring(18); // Enlever "SUPERVISION_ERROR:"
+    SECURE_LOG_INFO("UART", "Supervision error received from NUCLEO");
+    
+    // Transmettre la notification au backend via le service de supervision
+    // Le JSON contient déjà le format attendu par l'API
+    SupervisionService::SendErrorNotification(
+      SUPERVISION_ERROR_CRITICAL_SERVICE_FAILURE,
+      "NUCLEO supervision error: " + jsonPayload
+    );
     return;
   }
   
