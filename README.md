@@ -16,7 +16,7 @@ Module ESP32 du projet **DPM (Distributeur de Produits Modulaire)** - un distrib
 ### Framework & OS
 - **Arduino-ESP32** (PlatformIO)
 - **FreeRTOS** natif
-- **Architecture événementielle** avec queues FreeRTOS
+- **Architecture service/événementielle** avec queues FreeRTOS
 
 ## 🔧 Composants Matériels
 
@@ -34,10 +34,14 @@ DPM2_ESP/
 ├── src/
 │   ├── main.cpp              # Point d'entrée + CLI
 │   ├── orchestrator.cpp      # Orchestrateur principal
+│   ├── order_manager.cpp     # Gestion des commandes
+│   ├── env_config.cpp        # Configuration environment
+│   ├── supervision_service.cpp # Service de supervision
 │   ├── cli.cpp              # Parsing des commandes CLI
 │   ├── uart_parser.cpp      # Parsing UART NUCLEO
 │   ├── http_utils.cpp       # Utilitaires HTTP
 │   ├── nfc_ndef.cpp         # Parsing NDEF NFC
+│   ├── security_utils.cpp   # Utilitaires de sécurité
 │   └── services/
 │       ├── wifi_service.cpp      # Gestion Wi-Fi + SoftAP
 │       ├── nfc_service.cpp       # Service NFC RC522
@@ -47,13 +51,18 @@ DPM2_ESP/
 ├── include/
 │   ├── config.h             # Configuration globale
 │   ├── orchestrator.h       # Types d'événements
+│   ├── order_manager.h      # Gestion des commandes
+│   ├── env_config.h         # Configuration environment
+│   ├── supervision_service.h # Service de supervision
 │   ├── cli.h               # Commandes CLI
 │   ├── uart_parser.h       # Parser UART
 │   ├── http_utils.h        # Utilitaires HTTP
 │   ├── nfc_ndef.h          # Parser NDEF
+│   ├── security_utils.h    # Utilitaires de sécurité
 │   └── services/           # Headers des services
 ├── test/                   # Tests unitaires natifs
 ├── lib/dmp_core/          # Bibliothèque pour tests
+├── env.example            # Exemple de configuration
 └── platformio.ini         # Configuration PlatformIO
 ```
 
@@ -69,7 +78,7 @@ DPM2_ESP/
 
 ```bash
 # Cloner le projet
-git clone <repo-url>
+git clone <https://github.com/Projet-Master-DPM2/DPM2_ESP.git>
 cd DPM2_ESP
 
 # Compiler et flasher
@@ -104,10 +113,25 @@ pio device monitor -b 115200
 | `TX1 <msg>` | Envoi UART1 (NUCLEO) | `TX1 HELLO` |
 | `TX2 <msg>` | Envoi UART2 (QR) | `TX2 TEST` |
 | `HEX ON/OFF` | Mode hexadécimal QR | `HEX ON` |
+| `ENV` | Affiche la configuration | `ENV` |
+| `SUPERVISION` | Test du service de supervision | `SUPERVISION` |
 
 ## 🔄 Flux de Communication
 
-### 1. Flux NFC
+### 1. Flux QR Code (Nouveau)
+```
+[Utilisateur] → [QR Code] → [QR Service] → [Orchestrator]
+    ↓
+[HTTP Service] → [API Backend] → [Validation Token]
+    ↓
+[Order Manager] → [UART Service] → [NUCLEO] → [Livraison]
+    ↓
+[HTTP Service] → [API Backend] → [Mise à jour Quantités]
+    ↓
+[HTTP Service] → [API Backend] → [Confirmation Livraison]
+```
+
+### 2. Flux NFC (Legacy)
 ```
 [Utilisateur] → [Badge NFC] → [RC522] → [NFC Service] 
     ↓
@@ -116,23 +140,66 @@ pio device monitor -b 115200
 [Réponse Backend] → [NUCLEO] → [ESP32] → [Affichage LCD]
 ```
 
+### 3. Flux de Supervision
+```
+[NUCLEO Erreur] → [UART] → [ESP32] → [HTTP] → [Backend API]
+[ESP32 Erreur] → [HTTP] → [Backend API]
+```
+
 ### 2. Protocole UART avec NUCLEO
 
-**ESP32 → NUCLEO :**
+#### **Commandes de Livraison (ESP32 → NUCLEO)**
+```
+ORDER_START:
+VEND <product_id> <slot_number> <quantity>
+VEND <product_id> <slot_number> <quantity>
+...
+ORDER_END
+```
+
+#### **Messages de Statut (ESP32 → NUCLEO)**
+```
+QR_TOKEN_VALID
+QR_TOKEN_INVALID
+QR_TOKEN_ERROR
+QR_TOKEN_BUSY
+QR_TOKEN_NO_NETWORK
+```
+
+#### **Réponses de Livraison (NUCLEO → ESP32)**
+```
+ORDER_ACK
+ORDER_NAK
+VEND_COMPLETED <product_id> <slot_number>
+VEND_FAILED <product_id> <slot_number> <error_code>
+DELIVERY_COMPLETED
+DELIVERY_FAILED <error_message>
+```
+
+#### **Demandes de Service (NUCLEO → ESP32)**
+```
+STATE:PAYING
+STATE:IDLE
+STATE:ORDERING
+STATE:DELIVERING
+```
+
+#### **Notifications de Supervision (NUCLEO → ESP32)**
+```
+SUPERVISION_ERROR:{"error_id":"err_123","machine_id":"nucleo_f411re","error_type":"WATCHDOG_RESET","message":"Watchdog reset detected"}
+```
+
+#### **Messages Legacy NFC (ESP32 → NUCLEO)**
 - `NFC_UID:<uid_hex>` : UID lu
 - `NFC_DATA:<text>` : Données NDEF
 - `NFC_ERR:TIMEOUT` : Erreur de lecture
 
-**NUCLEO → ESP32 :**
-- `STATE:PAYING` : Demande de scan NFC
-- `STATE:IDLE` : Retour à l'état repos
-
-**Réponses ESP32 :**
+#### **Réponses Legacy (ESP32 → NUCLEO)**
 - `ACK:STATE:PAYING` : Wi-Fi OK, scan autorisé
 - `NAK:STATE:PAYING:NO_NET` : Pas de Wi-Fi
 - `NAK:PAYMENT:DENIED` : Paiement refusé
 
-## 🔒 Sécurité
+## 🔒 Sécurité et Surveillance
 
 ### Mesures Implémentées
 - ✅ **Validation d'entrée** stricte (UART, HTTP, NFC)
@@ -143,6 +210,15 @@ pio device monitor -b 115200
 - ✅ **Gestion d'erreurs** sans fuite d'informations
 - ✅ **Logging minimaliste** configurable par niveau
 - ✅ **Optimisation mémoire** avec stack sizes réduits
+
+### Système de Supervision
+- ✅ **Service de supervision** : Détection et notification d'erreurs critiques
+- ✅ **Notifications HTTP** : Envoi automatique d'erreurs vers l'API backend
+- ✅ **Rate limiting** : Protection contre le spam (30 secondes entre notifications)
+- ✅ **ID machine unique** : Génération automatique basée sur l'ESP32
+- ✅ **Réception erreurs NUCLEO** : Traitement des messages `SUPERVISION_ERROR:` via UART
+- ✅ **Intégration orchestrator** : Notifications pour les échecs de parsing JSON, génération de commandes, et livraison
+- ✅ **Configuration environment** : Endpoint de supervision configurable via `.env`
 
 ### Configuration Sécurité
 
@@ -267,7 +343,7 @@ NFC_ERR:TIMEOUT               # Erreur lecture
 
 ## 📝 Changelog
 
-Voir les [releases GitHub](../../releases) pour l'historique détaillé des versions.
+Voir le [CHANGELOG.md](CHANGELOG.md) pour l'historique détaillé des versions du module ESP32.
 
 ## 🐛 Dépannage
 
@@ -305,4 +381,4 @@ Réalisé par l'équipe DPM - Distributeur Projet Master
 ---
 
 **Équipe DPM2** - Distributeur Automatique Intelligent  
-*ESP32 Communication Module - v1.0*
+*ESP32 Communication Module - v2.0*
