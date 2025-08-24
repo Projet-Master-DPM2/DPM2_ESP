@@ -27,7 +27,7 @@ void setup() {
     while (!WifiService_IsReady()) vTaskDelay(pdMS_TO_TICKS(200));
     StartTaskHttpService();
     StartTaskNfcService(Orchestrator_GetQueue());
-    StartTaskQrService();
+    StartTaskQrService(Orchestrator_GetQueue());
     vTaskDelete(nullptr);
   }, "defer_services", 4096, nullptr, 1, nullptr);
 }

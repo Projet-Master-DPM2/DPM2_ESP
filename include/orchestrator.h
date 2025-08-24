@@ -9,6 +9,9 @@ enum OrchestratorEventType {
   ORCH_EVT_NFC_ERROR = 2,
   ORCH_EVT_STATE_PAYING = 3,
   ORCH_EVT_NFC_DATA = 4,
+  ORCH_EVT_QR_TOKEN_READ = 5,
+  ORCH_EVT_DELIVERY_COMPLETED = 6,
+  ORCH_EVT_DELIVERY_FAILED = 7,
 };
 
 struct OrchestratorEvent {

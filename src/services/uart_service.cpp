@@ -76,6 +76,17 @@ static void handleIncomingLine(const String& line) {
   }
   SECURE_LOG_INFO("UART", "Processing: %s", maskedLine.c_str());
   
+  // Traitement spécial pour les réponses de livraison
+  if (line.startsWith("DELIVERY_COMPLETED")) {
+    publishEvent(ORCH_EVT_DELIVERY_COMPLETED, line.c_str());
+    return;
+  }
+  
+  if (line.startsWith("DELIVERY_FAILED")) {
+    publishEvent(ORCH_EVT_DELIVERY_FAILED, line.c_str());
+    return;
+  }
+  
   UartResult r = UartParser_HandleLine(line.c_str(), WifiService_IsReady());
   switch (r) {
     case UART_ACK:

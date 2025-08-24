@@ -190,4 +190,45 @@ bool HttpService_Post(const char* url, const char* contentType, const char* body
   return HttpService_Enqueue(&r);
 }
 
+bool HttpService_ValidateQRToken(const char* qrToken, QueueHandle_t responseQueue, uint32_t timeoutMs) {
+  if (!qrToken) return false;
+  
+  // Construction du JSON body
+  char jsonBody[256];
+  snprintf(jsonBody, sizeof(jsonBody), "{\"qr_code_token\":\"%s\"}", qrToken);
+  
+  // URL de l'endpoint de validation
+  const char* validationUrl = "https://iot-vending-machine.osc-fr1.scalingo.io/api/order-validation/validate-token";
+  
+  Serial.printf("[HTTP] Validation QR token: %s\n", qrToken);
+  
+  return HttpService_Post(validationUrl, "application/json", jsonBody, responseQueue, timeoutMs);
+}
+
+bool HttpService_UpdateStock(const char* stockData, QueueHandle_t responseQueue, uint32_t timeoutMs) {
+  if (!stockData) return false;
+  
+  // URL de l'endpoint de mise à jour du stock
+  const char* stockUrl = "https://iot-vending-machine.osc-fr1.scalingo.io/api/stock/update";
+  
+  Serial.printf("[HTTP] Updating stock with data: %s\n", stockData);
+  
+  return HttpService_Post(stockUrl, "application/json", stockData, responseQueue, timeoutMs);
+}
+
+bool HttpService_UpdateOrderStatus(const char* orderId, const char* newStatus, QueueHandle_t responseQueue, uint32_t timeoutMs) {
+  if (!orderId || !newStatus) return false;
+  
+  // Construction du JSON body
+  char jsonBody[256];
+  snprintf(jsonBody, sizeof(jsonBody), "{\"order_id\":\"%s\",\"status\":\"%s\"}", orderId, newStatus);
+  
+  // URL de l'endpoint de mise à jour du statut
+  const char* statusUrl = "https://iot-vending-machine.osc-fr1.scalingo.io/api/order/update-status";
+  
+  Serial.printf("[HTTP] Updating order %s status to: %s\n", orderId, newStatus);
+  
+  return HttpService_Post(statusUrl, "application/json", jsonBody, responseQueue, timeoutMs);
+}
+
 

@@ -1,8 +1,10 @@
 #include "services/qr_service.h"
 #include "config.h"
+#include "orchestrator.h"
 
 static TaskHandle_t qrTaskHandle = nullptr;
 static volatile bool hexDumpEnabled = false;
+static QueueHandle_t orchestratorQueueHandle = nullptr;
 
 static void qrTask(void* pvParameters) {
   String line;
@@ -24,6 +26,19 @@ static void qrTask(void* pvParameters) {
         if (line.length() > 0) {
           Serial.print("[QR] ");
           Serial.println(line);
+          
+          // Détecter et traiter les tokens QR
+          if (line.startsWith("qr_") && line.indexOf("_") != line.lastIndexOf("_")) {
+            Serial.println("[QR] Token QR détecté, envoi à l'orchestrateur");
+            if (orchestratorQueueHandle) {
+              OrchestratorEvent evt{};
+              evt.type = ORCH_EVT_QR_TOKEN_READ;
+              line.toCharArray(evt.payload, sizeof(evt.payload) - 1);
+              evt.payload[sizeof(evt.payload) - 1] = '\0';
+              xQueueSend(orchestratorQueueHandle, &evt, 0);
+            }
+          }
+          
           line = "";
         }
       } else {
@@ -40,6 +55,19 @@ static void qrTask(void* pvParameters) {
     if (!hexDumpEnabled && line.length() > 0 && (millis() - lastByteMs) > interCharFlushMs) {
       Serial.print("[QR] ");
       Serial.println(line);
+      
+      // Détecter et traiter les tokens QR même en cas de timeout
+      if (line.startsWith("qr_") && line.indexOf("_") != line.lastIndexOf("_")) {
+        Serial.println("[QR] Token QR détecté (timeout), envoi à l'orchestrateur");
+        if (orchestratorQueueHandle) {
+          OrchestratorEvent evt{};
+          evt.type = ORCH_EVT_QR_TOKEN_READ;
+          line.toCharArray(evt.payload, sizeof(evt.payload) - 1);
+          evt.payload[sizeof(evt.payload) - 1] = '\0';
+          xQueueSend(orchestratorQueueHandle, &evt, 0);
+        }
+      }
+      
       line = "";
     }
 
@@ -47,7 +75,9 @@ static void qrTask(void* pvParameters) {
   }
 }
 
-void StartTaskQrService() {
+void StartTaskQrService(QueueHandle_t orchestratorQueue) {
+  orchestratorQueueHandle = orchestratorQueue;
+  
   // Initialiser l'UART2 pour le scanner (D16/D17)
   const uint32_t fixedBaud = 115200;
   Serial2.begin(fixedBaud, SERIAL_8N1, QR_UART_RX_PIN, QR_UART_TX_PIN);

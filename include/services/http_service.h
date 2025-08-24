@@ -36,4 +36,13 @@ bool HttpService_Enqueue(const HttpRequest* req);
 bool HttpService_Get(const char* url, QueueHandle_t responseQueue, uint32_t timeoutMs);
 bool HttpService_Post(const char* url, const char* contentType, const char* body, QueueHandle_t responseQueue, uint32_t timeoutMs);
 
+// Validation de token QR
+bool HttpService_ValidateQRToken(const char* qrToken, QueueHandle_t responseQueue, uint32_t timeoutMs);
+
+// Mise à jour du stock après livraison
+bool HttpService_UpdateStock(const char* stockData, QueueHandle_t responseQueue, uint32_t timeoutMs);
+
+// Mise à jour du statut de commande
+bool HttpService_UpdateOrderStatus(const char* orderId, const char* newStatus, QueueHandle_t responseQueue, uint32_t timeoutMs);
+
 
