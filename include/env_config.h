@@ -9,6 +9,7 @@
 #define DEFAULT_API_ORDER_STATUS_ENDPOINT "/api/order/update-status"
 #define DEFAULT_API_DELIVERY_CONFIRM_ENDPOINT "/api/order-delivery/confirm"
 #define DEFAULT_API_UPDATE_QUANTITIES_ENDPOINT "/api/stocks/update-quantity"
+#define DEFAULT_API_SUPERVISION_ENDPOINT "/api/supervision/event-notification"
 
 // Tailles maximales pour les URLs
 #define MAX_URL_LENGTH 256
@@ -22,6 +23,7 @@ typedef struct {
   char api_order_status_endpoint[MAX_ENDPOINT_LENGTH];
   char api_delivery_confirm_endpoint[MAX_ENDPOINT_LENGTH];
   char api_update_quantities_endpoint[MAX_ENDPOINT_LENGTH];
+  char api_supervision_endpoint[MAX_ENDPOINT_LENGTH];
   bool loaded_from_env;
 } ApiConfig;
 
@@ -35,11 +37,12 @@ public:
   static bool Initialize();
   
   // Getters pour les URLs complètes
-  static String GetValidateTokenUrl();
-  static String GetStockUpdateUrl();
-  static String GetOrderStatusUrl();
-  static String GetDeliveryConfirmUrl();
-  static String GetUpdateQuantitiesUrl();
+      static String GetValidateTokenUrl();
+    static String GetStockUpdateUrl();
+    static String GetOrderStatusUrl();
+    static String GetDeliveryConfirmUrl();
+    static String GetUpdateQuantitiesUrl();
+    static String GetSupervisionUrl();
   
   // Getters pour les composants
   static const char* GetApiBaseUrl();
@@ -48,6 +51,7 @@ public:
   static const char* GetOrderStatusEndpoint();
   static const char* GetDeliveryConfirmEndpoint();
   static const char* GetUpdateQuantitiesEndpoint();
+  static const char* GetSupervisionEndpoint();
   
   // Utilitaires
   static bool IsLoadedFromEnv();

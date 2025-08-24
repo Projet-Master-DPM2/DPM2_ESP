@@ -5,6 +5,7 @@
 #include "services/wifi_service.h"
 #include "services/http_service.h"
 #include "order_manager.h"
+#include "supervision_service.h"
 
 static QueueHandle_t orchestratorQueueHandle = nullptr;
 static TaskHandle_t orchestratorTaskHandle = nullptr;
@@ -36,6 +37,9 @@ void StartTaskOrchestrator() {
   if (!httpResponseQueue) {
     httpResponseQueue = xQueueCreate(5, sizeof(HttpResponse));
   }
+
+  // Initialiser le service de supervision
+  SupervisionService::Initialize();
 
   if (!orchestratorTaskHandle) {
     xTaskCreate(
@@ -75,12 +79,20 @@ static void orchestratorTask(void* pvParameters) {
               } else {
                 Serial.println("[ORCH] Error: Could not generate delivery commands");
                 UartService_SendLine("QR_TOKEN_ERROR");
+                SupervisionService::SendErrorNotification(
+                  SUPERVISION_ERROR_CRITICAL_SERVICE_FAILURE,
+                  "Failed to generate delivery commands for validated order"
+                );
                 currentWorkflowState = WORKFLOW_IDLE;
                 OrderManager::ClearCurrentOrder();
               }
             } else {
               Serial.println("[ORCH] Error: Could not parse order data from response");
               UartService_SendLine("QR_TOKEN_INVALID");
+              SupervisionService::SendErrorNotification(
+                SUPERVISION_ERROR_CRITICAL_SERVICE_FAILURE,
+                "Failed to parse order data from QR token validation response"
+              );
               currentWorkflowState = WORKFLOW_IDLE;
             }
           } else {
@@ -213,6 +225,10 @@ static void orchestratorTask(void* pvParameters) {
           Serial.printf("[ORCH] Delivery failed: %s\n", evt.payload);
           if (currentWorkflowState == WORKFLOW_DELIVERING) {
             Serial.println("[ORCH] Cleaning up failed order");
+            SupervisionService::SendErrorNotification(
+              SUPERVISION_ERROR_CRITICAL_SERVICE_FAILURE,
+              "Physical delivery failed - NUCLEO reported delivery failure: " + String(evt.payload)
+            );
             currentWorkflowState = WORKFLOW_IDLE;
             OrderManager::ClearCurrentOrder();
             UartService_SendLine("ORDER_FAILED");
