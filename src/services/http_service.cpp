@@ -235,4 +235,43 @@ bool HttpService_UpdateOrderStatus(const char* orderId, const char* newStatus, Q
   return HttpService_Post(statusUrl.c_str(), "application/json", jsonBody, responseQueue, timeoutMs);
 }
 
+bool HttpService_ConfirmDelivery(const char* orderId, const char* machineId, const char* timestamp, const char* itemsDeliveredJson, QueueHandle_t responseQueue, uint32_t timeoutMs) {
+  if (!orderId || !machineId || !timestamp || !itemsDeliveredJson) return false;
+  
+  // Construction du JSON body pour la confirmation de livraison
+  char jsonBody[1024];
+  snprintf(jsonBody, sizeof(jsonBody), 
+    "{\"order_id\":\"%s\",\"machine_id\":\"%s\",\"timestamp\":\"%s\",\"items_delivered\":%s}", 
+    orderId, machineId, timestamp, itemsDeliveredJson);
+  
+  // URL de l'endpoint de confirmation de livraison depuis la configuration
+  String deliveryUrl = EnvConfig::GetDeliveryConfirmUrl();
+  
+  Serial.printf("[HTTP] Confirming delivery for order: %s\n", orderId);
+  Serial.printf("[HTTP] Machine: %s, Timestamp: %s\n", machineId, timestamp);
+  Serial.printf("[HTTP] Items delivered: %s\n", itemsDeliveredJson);
+  Serial.printf("[HTTP] Using endpoint: %s\n", deliveryUrl.c_str());
+  
+  return HttpService_Post(deliveryUrl.c_str(), "application/json", jsonBody, responseQueue, timeoutMs);
+}
+
+bool HttpService_UpdateQuantities(const char* machineId, const char* productId, int quantity, int slotNumber, QueueHandle_t responseQueue, uint32_t timeoutMs) {
+  if (!machineId || !productId) return false;
+  
+  // Construction du JSON body pour la mise à jour des quantités
+  char jsonBody[512];
+  snprintf(jsonBody, sizeof(jsonBody), 
+    "{\"machine_id\":\"%s\",\"product_id\":\"%s\",\"quantity\":%d,\"slot_number\":%d}", 
+    machineId, productId, quantity, slotNumber);
+  
+  // URL de l'endpoint de mise à jour des quantités depuis la configuration
+  String quantitiesUrl = EnvConfig::GetUpdateQuantitiesUrl();
+  
+  Serial.printf("[HTTP] Updating quantities for product: %s\n", productId);
+  Serial.printf("[HTTP] Machine: %s, Slot: %d, Quantity: %d\n", machineId, slotNumber, quantity);
+  Serial.printf("[HTTP] Using endpoint: %s\n", quantitiesUrl.c_str());
+  
+  return HttpService_Post(quantitiesUrl.c_str(), "application/json", jsonBody, responseQueue, timeoutMs);
+}
+
 

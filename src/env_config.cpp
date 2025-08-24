@@ -53,6 +53,16 @@ String EnvConfig::GetOrderStatusUrl() {
   return String(config.api_base_url) + String(config.api_order_status_endpoint);
 }
 
+String EnvConfig::GetDeliveryConfirmUrl() {
+  if (!initialized) Initialize();
+  return String(config.api_base_url) + String(config.api_delivery_confirm_endpoint);
+}
+
+String EnvConfig::GetUpdateQuantitiesUrl() {
+  if (!initialized) Initialize();
+  return String(config.api_base_url) + String(config.api_update_quantities_endpoint);
+}
+
 const char* EnvConfig::GetApiBaseUrl() {
   if (!initialized) Initialize();
   return config.api_base_url;
@@ -73,6 +83,16 @@ const char* EnvConfig::GetOrderStatusEndpoint() {
   return config.api_order_status_endpoint;
 }
 
+const char* EnvConfig::GetDeliveryConfirmEndpoint() {
+  if (!initialized) Initialize();
+  return config.api_delivery_confirm_endpoint;
+}
+
+const char* EnvConfig::GetUpdateQuantitiesEndpoint() {
+  if (!initialized) Initialize();
+  return config.api_update_quantities_endpoint;
+}
+
 bool EnvConfig::IsLoadedFromEnv() {
   if (!initialized) Initialize();
   return config.loaded_from_env;
@@ -84,6 +104,8 @@ void EnvConfig::PrintConfig() {
   Serial.printf("Validate: %s\n", config.api_validate_endpoint);
   Serial.printf("Stock: %s\n", config.api_stock_endpoint);
   Serial.printf("Status: %s\n", config.api_order_status_endpoint);
+  Serial.printf("Delivery: %s\n", config.api_delivery_confirm_endpoint);
+  Serial.printf("Quantities: %s\n", config.api_update_quantities_endpoint);
   Serial.printf("Source: %s\n", config.loaded_from_env ? ".env file" : "defaults");
   Serial.println("[ENV] === End Configuration ===");
 }
@@ -126,11 +148,15 @@ void EnvConfig::LoadDefaults() {
   strncpy(config.api_validate_endpoint, DEFAULT_API_VALIDATE_ENDPOINT, MAX_ENDPOINT_LENGTH - 1);
   strncpy(config.api_stock_endpoint, DEFAULT_API_STOCK_ENDPOINT, MAX_ENDPOINT_LENGTH - 1);
   strncpy(config.api_order_status_endpoint, DEFAULT_API_ORDER_STATUS_ENDPOINT, MAX_ENDPOINT_LENGTH - 1);
+  strncpy(config.api_delivery_confirm_endpoint, DEFAULT_API_DELIVERY_CONFIRM_ENDPOINT, MAX_ENDPOINT_LENGTH - 1);
+  strncpy(config.api_update_quantities_endpoint, DEFAULT_API_UPDATE_QUANTITIES_ENDPOINT, MAX_ENDPOINT_LENGTH - 1);
   
   config.api_base_url[MAX_URL_LENGTH - 1] = '\0';
   config.api_validate_endpoint[MAX_ENDPOINT_LENGTH - 1] = '\0';
   config.api_stock_endpoint[MAX_ENDPOINT_LENGTH - 1] = '\0';
   config.api_order_status_endpoint[MAX_ENDPOINT_LENGTH - 1] = '\0';
+  config.api_delivery_confirm_endpoint[MAX_ENDPOINT_LENGTH - 1] = '\0';
+  config.api_update_quantities_endpoint[MAX_ENDPOINT_LENGTH - 1] = '\0';
   
   config.loaded_from_env = false;
 }
@@ -178,6 +204,14 @@ void EnvConfig::SetConfigValue(const String& key, const String& value) {
   else if (key == "API_ORDER_STATUS_ENDPOINT") {
     strncpy(config.api_order_status_endpoint, value.c_str(), MAX_ENDPOINT_LENGTH - 1);
     config.api_order_status_endpoint[MAX_ENDPOINT_LENGTH - 1] = '\0';
+  }
+  else if (key == "API_DELIVERY_CONFIRM_ENDPOINT") {
+    strncpy(config.api_delivery_confirm_endpoint, value.c_str(), MAX_ENDPOINT_LENGTH - 1);
+    config.api_delivery_confirm_endpoint[MAX_ENDPOINT_LENGTH - 1] = '\0';
+  }
+  else if (key == "API_UPDATE_QUANTITIES_ENDPOINT") {
+    strncpy(config.api_update_quantities_endpoint, value.c_str(), MAX_ENDPOINT_LENGTH - 1);
+    config.api_update_quantities_endpoint[MAX_ENDPOINT_LENGTH - 1] = '\0';
   }
   else {
     Serial.printf("[ENV] Unknown configuration key: %s\n", key.c_str());

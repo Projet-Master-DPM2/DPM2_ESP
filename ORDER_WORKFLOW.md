@@ -96,34 +96,44 @@ NUCLEO → ESP32 : "DELIVERY_COMPLETED" ou "DELIVERY_FAILED"
 - Attente de confirmation de livraison
 - Gestion des événements `ORCH_EVT_DELIVERY_COMPLETED/FAILED`
 
-### 7. Mise à Jour du Stock
+### 7. Mise à Jour des Quantités de Stock
 ```
-OrderManager::GenerateStockUpdateData() → HTTP POST /api/stock/update
+Orchestrateur → HTTP Service → API Backend
 ```
-**Payload de mise à jour** :
+**Endpoint** : `POST /api/stocks/update-quantity`
+**Payload** :
 ```json
 {
-  "order_id": "order_123456789",
-  "machine_id": "machine_123456789", 
-  "items": [
-    {
-      "product_id": "prod_123456789",
-      "slot_number": 1,
-      "quantity_delivered": 2
-    }
-  ]
+  "machine_id": "machine_123456789",
+  "product_id": "prod_123456789",
+  "quantity": 2,
+  "slot_number": 1
 }
 ```
 
-### 8. Mise à Jour du Statut de Commande
+### 8. Confirmation de Livraison
 ```
-HTTP POST /api/order/update-status
+Orchestrateur → HTTP Service → API Backend
 ```
+**Endpoint** : `POST /api/order-delivery/confirm`
 **Payload** :
 ```json
 {
   "order_id": "order_123456789",
-  "status": "DELIVERED"
+  "machine_id": "machine_123456789", 
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "items_delivered": [
+    {
+      "product_id": "prod_123456789",
+      "slot_number": 1,
+      "quantity": 2
+    },
+    {
+      "product_id": "prod_987654321",
+      "slot_number": 3, 
+      "quantity": 1
+    }
+  ]
 }
 ```
 
@@ -141,8 +151,8 @@ enum OrderWorkflowState {
   WORKFLOW_IDLE = 0,                // Prêt pour nouvelle commande
   WORKFLOW_VALIDATING_TOKEN = 1,    // Validation en cours
   WORKFLOW_DELIVERING = 2,          // Livraison en cours  
-  WORKFLOW_UPDATING_STOCK = 3,      // Mise à jour stock
-  WORKFLOW_UPDATING_STATUS = 4,     // Mise à jour statut
+  WORKFLOW_UPDATING_QUANTITIES = 3, // Mise à jour des quantités
+  WORKFLOW_CONFIRMING_DELIVERY = 4, // Confirmation de livraison
   WORKFLOW_COMPLETED = 5            // Workflow terminé
 };
 ```

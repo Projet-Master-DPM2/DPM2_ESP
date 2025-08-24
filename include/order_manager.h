@@ -45,6 +45,12 @@ public:
   static String GenerateDeliveryCommands();
   static String GenerateStockUpdateData();
   
+  // Génération de données pour confirmation de livraison
+  static String GenerateDeliveryConfirmationData();
+  
+  // Mise à jour des quantités de stock pour tous les items
+  static bool UpdateAllQuantities(QueueHandle_t responseQueue, uint32_t timeoutMs);
+  
   // Validation
   static bool ValidateOrder(const OrderData* order);
   

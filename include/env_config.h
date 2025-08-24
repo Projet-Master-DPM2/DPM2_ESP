@@ -7,6 +7,8 @@
 #define DEFAULT_API_VALIDATE_ENDPOINT "/api/order-validation/validate-token"
 #define DEFAULT_API_STOCK_ENDPOINT "/api/stock/update"
 #define DEFAULT_API_ORDER_STATUS_ENDPOINT "/api/order/update-status"
+#define DEFAULT_API_DELIVERY_CONFIRM_ENDPOINT "/api/order-delivery/confirm"
+#define DEFAULT_API_UPDATE_QUANTITIES_ENDPOINT "/api/stocks/update-quantity"
 
 // Tailles maximales pour les URLs
 #define MAX_URL_LENGTH 256
@@ -18,6 +20,8 @@ typedef struct {
   char api_validate_endpoint[MAX_ENDPOINT_LENGTH];
   char api_stock_endpoint[MAX_ENDPOINT_LENGTH];
   char api_order_status_endpoint[MAX_ENDPOINT_LENGTH];
+  char api_delivery_confirm_endpoint[MAX_ENDPOINT_LENGTH];
+  char api_update_quantities_endpoint[MAX_ENDPOINT_LENGTH];
   bool loaded_from_env;
 } ApiConfig;
 
@@ -34,12 +38,16 @@ public:
   static String GetValidateTokenUrl();
   static String GetStockUpdateUrl();
   static String GetOrderStatusUrl();
+  static String GetDeliveryConfirmUrl();
+  static String GetUpdateQuantitiesUrl();
   
   // Getters pour les composants
   static const char* GetApiBaseUrl();
   static const char* GetValidateEndpoint();
   static const char* GetStockEndpoint();
   static const char* GetOrderStatusEndpoint();
+  static const char* GetDeliveryConfirmEndpoint();
+  static const char* GetUpdateQuantitiesEndpoint();
   
   // Utilitaires
   static bool IsLoadedFromEnv();

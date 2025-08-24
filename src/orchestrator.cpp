@@ -15,8 +15,8 @@ enum OrderWorkflowState {
   WORKFLOW_IDLE = 0,
   WORKFLOW_VALIDATING_TOKEN = 1,
   WORKFLOW_DELIVERING = 2,
-  WORKFLOW_UPDATING_STOCK = 3,
-  WORKFLOW_UPDATING_STATUS = 4,
+  WORKFLOW_UPDATING_QUANTITIES = 3,
+  WORKFLOW_CONFIRMING_DELIVERY = 4,
   WORKFLOW_COMPLETED = 5
 };
 
@@ -90,35 +90,52 @@ static void orchestratorTask(void* pvParameters) {
           }
           break;
           
-        case WORKFLOW_UPDATING_STOCK:
+        case WORKFLOW_UPDATING_QUANTITIES:
           if (httpResp.statusCode == 200) {
-            Serial.println("[ORCH] Stock updated successfully, updating order status");
+            Serial.println("[ORCH] Quantities updated successfully, confirming delivery");
+            // Confirmer la livraison au backend
             OrderData* order = OrderManager::GetCurrentOrder();
             if (order) {
-              HttpService_UpdateOrderStatus(order->order_id, "DELIVERED", httpResponseQueue, 10000);
-              currentWorkflowState = WORKFLOW_UPDATING_STATUS;
+              String deliveryData = OrderManager::GenerateDeliveryConfirmationData();
+              if (deliveryData.length() > 0) {
+                HttpService_ConfirmDelivery(order->order_id, order->machine_id, order->timestamp, deliveryData.c_str(), httpResponseQueue, 10000);
+                currentWorkflowState = WORKFLOW_CONFIRMING_DELIVERY;
+                Serial.println("[ORCH] Delivery confirmation request sent");
+              } else {
+                Serial.println("[ORCH] Error: Could not generate delivery confirmation data");
+                currentWorkflowState = WORKFLOW_IDLE;
+                OrderManager::ClearCurrentOrder();
+              }
             } else {
-              Serial.println("[ORCH] Error: No active order for status update");
+              Serial.println("[ORCH] Error: No active order for delivery confirmation");
               currentWorkflowState = WORKFLOW_IDLE;
             }
           } else {
-            Serial.printf("[ORCH] Stock update failed: %d\n", httpResp.statusCode);
+            Serial.printf("[ORCH] Quantity update failed: %d\n", httpResp.statusCode);
             currentWorkflowState = WORKFLOW_IDLE;
             OrderManager::ClearCurrentOrder();
           }
           break;
           
-        case WORKFLOW_UPDATING_STATUS:
+        case WORKFLOW_CONFIRMING_DELIVERY:
           if (httpResp.statusCode == 200) {
-            Serial.println("[ORCH] Order status updated to DELIVERED - Workflow completed!");
+            Serial.println("[ORCH] Delivery confirmed successfully - Workflow completed!");
+            // Le backend gère automatiquement la mise à jour du stock et du statut
             currentWorkflowState = WORKFLOW_COMPLETED;
           } else {
-            Serial.printf("[ORCH] Order status update failed: %d\n", httpResp.statusCode);
+            Serial.printf("[ORCH] Delivery confirmation failed: %d\n", httpResp.statusCode);
+            currentWorkflowState = WORKFLOW_IDLE;
+            OrderManager::ClearCurrentOrder();
           }
-          // Dans tous les cas, nettoyer la commande courante
+          break;
+          
+        case WORKFLOW_COMPLETED:
+          Serial.println("[ORCH] Workflow completed, cleaning up and returning to idle");
           OrderManager::ClearCurrentOrder();
           currentWorkflowState = WORKFLOW_IDLE;
           break;
+          
+
           
         default:
           Serial.printf("[ORCH] Unexpected HTTP response in state %d\n", currentWorkflowState);
@@ -178,14 +195,12 @@ static void orchestratorTask(void* pvParameters) {
         case ORCH_EVT_DELIVERY_COMPLETED:
           Serial.printf("[ORCH] Delivery completed: %s\n", evt.payload);
           if (currentWorkflowState == WORKFLOW_DELIVERING) {
-            // Générer et envoyer la mise à jour du stock
-            String stockData = OrderManager::GenerateStockUpdateData();
-            if (stockData.length() > 0) {
-              HttpService_UpdateStock(stockData.c_str(), httpResponseQueue, 10000);
-              currentWorkflowState = WORKFLOW_UPDATING_STOCK;
-              Serial.println("[ORCH] Stock update request sent");
+            // Mettre à jour les quantités de stock
+            if (OrderManager::UpdateAllQuantities(httpResponseQueue, 10000)) {
+              currentWorkflowState = WORKFLOW_UPDATING_QUANTITIES;
+              Serial.println("[ORCH] Quantity update request sent");
             } else {
-              Serial.println("[ORCH] Error: Could not generate stock update data");
+              Serial.println("[ORCH] Error: Could not send quantity update request");
               currentWorkflowState = WORKFLOW_IDLE;
               OrderManager::ClearCurrentOrder();
             }

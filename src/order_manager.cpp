@@ -1,5 +1,6 @@
 #include "order_manager.h"
 #include <ArduinoJson.h>
+#include "services/http_service.h"
 
 // Variables statiques
 OrderData OrderManager::current_order = {};
@@ -151,6 +152,60 @@ String OrderManager::GenerateStockUpdateData() {
   
   Serial.printf("[ORDER] Generated stock update data: %s\n", json_string.c_str());
   return json_string;
+}
+
+String OrderManager::GenerateDeliveryConfirmationData() {
+  if (!has_active_order || !current_order.is_valid) {
+    return "";
+  }
+  
+  // Générer un JSON pour la confirmation de livraison
+  DynamicJsonDocument doc(1024);
+  doc["order_id"] = current_order.order_id;
+  doc["machine_id"] = current_order.machine_id;
+  doc["timestamp"] = current_order.timestamp;
+  
+  JsonArray items = doc.createNestedArray("items_delivered");
+  for (int i = 0; i < current_order.item_count; i++) {
+    JsonObject item = items.createNestedObject();
+    item["product_id"] = current_order.items[i].product_id;
+    item["slot_number"] = current_order.items[i].slot_number;
+    item["quantity"] = current_order.items[i].quantity;
+  }
+  
+  String json_string;
+  serializeJson(doc, json_string);
+  
+  Serial.printf("[ORDER] Generated delivery confirmation data: %s\n", json_string.c_str());
+  return json_string;
+}
+
+bool OrderManager::UpdateAllQuantities(QueueHandle_t responseQueue, uint32_t timeoutMs) {
+  if (!has_active_order || !current_order.is_valid) {
+    Serial.println("[ORDER] No active order for quantity update");
+    return false;
+  }
+  
+  Serial.printf("[ORDER] Updating quantities for %d items\n", current_order.item_count);
+  
+  // Pour chaque item de la commande, envoyer une requête de mise à jour des quantités
+  // Note: Pour l'instant, on envoie seulement le premier item
+  // TODO: Implémenter une file de requêtes pour traiter tous les items séquentiellement
+  if (current_order.item_count > 0) {
+    const OrderItem& item = current_order.items[0];
+    
+    Serial.printf("[ORDER] Updating quantity for product %s, slot %d\n", 
+                  item.product_id, item.slot_number);
+    
+    return HttpService_UpdateQuantities(current_order.machine_id, 
+                                       item.product_id, 
+                                       item.quantity, 
+                                       item.slot_number, 
+                                       responseQueue, 
+                                       timeoutMs);
+  }
+  
+  return false;
 }
 
 bool OrderManager::ValidateOrder(const OrderData* order) {
