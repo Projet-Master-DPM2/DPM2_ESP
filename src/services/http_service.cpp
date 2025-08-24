@@ -2,6 +2,7 @@
 #include "services/http_service.h"
 #include "services/wifi_service.h"
 #include "security_config.h"
+#include "env_config.h"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 
@@ -197,23 +198,25 @@ bool HttpService_ValidateQRToken(const char* qrToken, QueueHandle_t responseQueu
   char jsonBody[256];
   snprintf(jsonBody, sizeof(jsonBody), "{\"qr_code_token\":\"%s\"}", qrToken);
   
-  // URL de l'endpoint de validation
-  const char* validationUrl = "https://iot-vending-machine.osc-fr1.scalingo.io/api/order-validation/validate-token";
+  // URL de l'endpoint de validation depuis la configuration
+  String validationUrl = EnvConfig::GetValidateTokenUrl();
   
   Serial.printf("[HTTP] Validation QR token: %s\n", qrToken);
+  Serial.printf("[HTTP] Using endpoint: %s\n", validationUrl.c_str());
   
-  return HttpService_Post(validationUrl, "application/json", jsonBody, responseQueue, timeoutMs);
+  return HttpService_Post(validationUrl.c_str(), "application/json", jsonBody, responseQueue, timeoutMs);
 }
 
 bool HttpService_UpdateStock(const char* stockData, QueueHandle_t responseQueue, uint32_t timeoutMs) {
   if (!stockData) return false;
   
-  // URL de l'endpoint de mise à jour du stock
-  const char* stockUrl = "https://iot-vending-machine.osc-fr1.scalingo.io/api/stock/update";
+  // URL de l'endpoint de mise à jour du stock depuis la configuration
+  String stockUrl = EnvConfig::GetStockUpdateUrl();
   
   Serial.printf("[HTTP] Updating stock with data: %s\n", stockData);
+  Serial.printf("[HTTP] Using endpoint: %s\n", stockUrl.c_str());
   
-  return HttpService_Post(stockUrl, "application/json", stockData, responseQueue, timeoutMs);
+  return HttpService_Post(stockUrl.c_str(), "application/json", stockData, responseQueue, timeoutMs);
 }
 
 bool HttpService_UpdateOrderStatus(const char* orderId, const char* newStatus, QueueHandle_t responseQueue, uint32_t timeoutMs) {
@@ -223,12 +226,13 @@ bool HttpService_UpdateOrderStatus(const char* orderId, const char* newStatus, Q
   char jsonBody[256];
   snprintf(jsonBody, sizeof(jsonBody), "{\"order_id\":\"%s\",\"status\":\"%s\"}", orderId, newStatus);
   
-  // URL de l'endpoint de mise à jour du statut
-  const char* statusUrl = "https://iot-vending-machine.osc-fr1.scalingo.io/api/order/update-status";
+  // URL de l'endpoint de mise à jour du statut depuis la configuration
+  String statusUrl = EnvConfig::GetOrderStatusUrl();
   
   Serial.printf("[HTTP] Updating order %s status to: %s\n", orderId, newStatus);
+  Serial.printf("[HTTP] Using endpoint: %s\n", statusUrl.c_str());
   
-  return HttpService_Post(statusUrl, "application/json", jsonBody, responseQueue, timeoutMs);
+  return HttpService_Post(statusUrl.c_str(), "application/json", jsonBody, responseQueue, timeoutMs);
 }
 
 

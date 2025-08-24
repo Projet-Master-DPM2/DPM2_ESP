@@ -101,19 +101,30 @@ String OrderManager::GenerateDeliveryCommands() {
   
   String commands = "";
   
+  // En-tête de la commande avec l'ID de commande
+  commands += "ORDER_START:" + String(current_order.order_id) + "\n";
+  
+  // Détails de chaque item à livrer
   for (int i = 0; i < current_order.item_count; i++) {
     const OrderItem& item = current_order.items[i];
     
     // Format: VEND <slot_number> <quantity> <product_id>
+    // slot_number = channel du multiplexeur (1-99)
+    // quantity = nombre d'unités à livrer
+    // product_id = identifiant du produit pour traçabilité
     commands += "VEND " + String(item.slot_number) + " " + 
                 String(item.quantity) + " " + String(item.product_id);
     
     if (i < current_order.item_count - 1) {
-      commands += ";"; // Séparateur pour plusieurs commandes
+      commands += "\n"; // Séparateur pour plusieurs commandes
     }
   }
   
-  Serial.printf("[ORDER] Generated delivery commands: %s\n", commands.c_str());
+  // Fin de commande
+  commands += "\nORDER_END";
+  
+  Serial.printf("[ORDER] Generated delivery commands for order %s:\n%s\n", 
+                current_order.order_id, commands.c_str());
   return commands;
 }
 
