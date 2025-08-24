@@ -1,9 +1,11 @@
 #pragma once
 
 #include <Arduino.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 
 // Démarre la tâche de lecture du scanner QR (UART2 sur D16/D17)
-void StartTaskQrService();
+void StartTaskQrService(QueueHandle_t orchestratorQueue);
 
 // Arrête la tâche QR si en cours d'exécution
 void StopTaskQrService();

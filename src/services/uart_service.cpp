@@ -76,6 +76,42 @@ static void handleIncomingLine(const String& line) {
   }
   SECURE_LOG_INFO("UART", "Processing: %s", maskedLine.c_str());
   
+  // Traitement spécial pour les réponses de livraison
+  if (line.startsWith("DELIVERY_COMPLETED")) {
+    SECURE_LOG_INFO("UART", "Delivery completed successfully");
+    publishEvent(ORCH_EVT_DELIVERY_COMPLETED, line.c_str());
+    return;
+  }
+  
+  if (line.startsWith("DELIVERY_FAILED")) {
+    SECURE_LOG_ERROR("UART", "Delivery failed: %s", line.c_str());
+    publishEvent(ORCH_EVT_DELIVERY_FAILED, line.c_str());
+    return;
+  }
+  
+  // Traitement des confirmations de commande
+  if (line.startsWith("ORDER_ACK")) {
+    SECURE_LOG_INFO("UART", "Order acknowledged by NUCLEO");
+    return;
+  }
+  
+  if (line.startsWith("ORDER_NAK")) {
+    SECURE_LOG_ERROR("UART", "Order rejected by NUCLEO: %s", line.c_str());
+    publishEvent(ORCH_EVT_DELIVERY_FAILED, line.c_str());
+    return;
+  }
+  
+  // Traitement des statuts de livraison par item
+  if (line.startsWith("VEND_COMPLETED")) {
+    SECURE_LOG_INFO("UART", "Vending completed for item: %s", line.c_str());
+    return;
+  }
+  
+  if (line.startsWith("VEND_FAILED")) {
+    SECURE_LOG_ERROR("UART", "Vending failed for item: %s", line.c_str());
+    return;
+  }
+  
   UartResult r = UartParser_HandleLine(line.c_str(), WifiService_IsReady());
   switch (r) {
     case UART_ACK:

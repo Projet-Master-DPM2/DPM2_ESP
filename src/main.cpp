@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "orchestrator.h"
+#include "env_config.h"
 #include "services/nfc_service.h"
 #include "services/uart_service.h"
 #include "services/qr_service.h"
@@ -17,6 +18,10 @@ void setup() {
   Serial.println("\n[DPM2] ESP32 boot");
   Serial.printf("[BOARD] Free heap: %lu bytes\n", (unsigned long)ESP.getFreeHeap());
 
+  // Initialiser la configuration d'environnement
+  Serial.println("\n[MAIN] Initializing environment configuration...");
+  EnvConfig::Initialize();
+
   StartTaskWifiService();
   StartTaskOrchestrator();
   StartTaskUartService(Orchestrator_GetQueue()); // UART1 actif aussi hors réseau pour ACK/NAK
@@ -27,7 +32,7 @@ void setup() {
     while (!WifiService_IsReady()) vTaskDelay(pdMS_TO_TICKS(200));
     StartTaskHttpService();
     StartTaskNfcService(Orchestrator_GetQueue());
-    StartTaskQrService();
+    StartTaskQrService(Orchestrator_GetQueue());
     vTaskDelete(nullptr);
   }, "defer_services", 4096, nullptr, 1, nullptr);
 }
